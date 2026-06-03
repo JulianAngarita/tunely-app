@@ -1,18 +1,18 @@
 import 'package:flutter/material.dart';
-import 'package:tunely/core/themes/app_colors.dart';
+import '../../../core/themes/app_colors.dart';
 import '../../../core/constants/app_spacing.dart';
-import '../home_screen.dart';
+import '../models/playlist_model.dart';
 
 class PlaylistCard extends StatelessWidget {
   final PlaylistModel playlist;
-  final VoidCallback?  onTap;
+  final VoidCallback? onTap;
 
   const PlaylistCard({super.key, required this.playlist, this.onTap});
 
   @override
   Widget build(BuildContext context) {
-    final cs     = Theme.of(context).colorScheme;
-    final tt     = Theme.of(context).textTheme;
+    final cs = Theme.of(context).colorScheme;
+    final tt = Theme.of(context).textTheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Material(
@@ -25,11 +25,8 @@ class PlaylistCard extends StatelessWidget {
           padding: const EdgeInsets.all(AppSpacing.md),
           child: Row(
             children: [
-              // ── Cover ────────────────────────────────────────
               _PlaylistCover(gradient: playlist.coverGradient),
               const SizedBox(width: AppSpacing.md),
-
-              // ── Name + members + tracks ───────────────────────
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -45,7 +42,7 @@ class PlaylistCard extends StatelessWidget {
                       children: [
                         _MemberAvatars(
                           initials: playlist.memberInitials,
-                          colors:   playlist.memberColors,
+                          colors: playlist.memberColors,
                         ),
                         const SizedBox(width: AppSpacing.sm),
                         Text(
@@ -59,8 +56,6 @@ class PlaylistCard extends StatelessWidget {
                   ],
                 ),
               ),
-
-              // ── Sync status ───────────────────────────────────
               _SyncBadge(
                 syncStatus: playlist.syncStatus,
                 timeLabel: playlist.syncLabel,
@@ -101,20 +96,21 @@ class _PlaylistCover extends StatelessWidget {
   }
 }
 
-// ─── MEMBER AVATARS (overlapping) ──────────────────────────────
+// ─── MEMBER AVATARS ────────────────────────────────────────────
 
 class _MemberAvatars extends StatelessWidget {
   final List<String> initials;
-  final List<Color>  colors;
+  final List<Color> colors;
   const _MemberAvatars({required this.initials, required this.colors});
 
-  static const _size   = 22.0;
+  static const _size = 22.0;
   static const _overlap = 8.0;
 
   @override
   Widget build(BuildContext context) {
+    if (initials.isEmpty) return const SizedBox.shrink();
+
     return SizedBox(
-      // ancho total: primer avatar + cada siguiente desplazado
       width: _size + (_size - _overlap) * (initials.length - 1),
       height: _size,
       child: Stack(
@@ -153,7 +149,7 @@ class _MemberAvatars extends StatelessWidget {
 
 class _SyncBadge extends StatelessWidget {
   final SyncStatus syncStatus;
-  final String     timeLabel;
+  final String timeLabel;
   const _SyncBadge({required this.syncStatus, required this.timeLabel});
 
   @override
@@ -161,10 +157,8 @@ class _SyncBadge extends StatelessWidget {
     final cs = Theme.of(context).colorScheme;
     final tt = Theme.of(context).textTheme;
 
-    final isSynced  = syncStatus == SyncStatus.synced;
     final isSyncing = syncStatus == SyncStatus.syncing;
-
-    final statusColor = isSynced
+    final statusColor = syncStatus == SyncStatus.synced
         ? AppColors.synced
         : cs.onSurface.withOpacity(0.4);
 
@@ -174,13 +168,8 @@ class _SyncBadge extends StatelessWidget {
         Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            // Punto o ícono de reloj
             isSyncing
-                ? Icon(
-                    Icons.access_time_rounded,
-                    size: 12,
-                    color: statusColor,
-                  )
+                ? Icon(Icons.access_time_rounded, size: 12, color: statusColor)
                 : Container(
                     width: 8,
                     height: 8,
@@ -191,7 +180,7 @@ class _SyncBadge extends StatelessWidget {
                   ),
             const SizedBox(width: 4),
             Text(
-              isSynced ? 'Synced' : 'Syncing',
+              isSyncing ? 'Syncing' : 'Synced',
               style: tt.bodySmall?.copyWith(
                 color: statusColor,
                 fontWeight: FontWeight.w500,
@@ -202,9 +191,7 @@ class _SyncBadge extends StatelessWidget {
         const SizedBox(height: 2),
         Text(
           timeLabel,
-          style: tt.bodySmall?.copyWith(
-            color: cs.onSurface.withOpacity(0.4),
-          ),
+          style: tt.bodySmall?.copyWith(color: cs.onSurface.withOpacity(0.4)),
         ),
       ],
     );

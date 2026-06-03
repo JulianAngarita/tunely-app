@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:tunely/core/themes/app_colors.dart';
+import '../../../core/themes/app_colors.dart';
 import '../../../core/constants/app_spacing.dart';
 
 class SectionHeader extends StatelessWidget {

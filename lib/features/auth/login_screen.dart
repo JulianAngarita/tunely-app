@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
+import 'package:tunely/core/constants/app_config.dart';
 import 'package:tunely/core/themes/app_colors.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../core/constants/app_spacing.dart';
@@ -17,40 +19,38 @@ class LoginScreen extends StatefulWidget {
 
 class _LoginScreenState extends State<LoginScreen> {
   bool _loadingSpotify = false;
-  bool _loadingGoogle  = false;
-
-  static const _backendUrl = 'http://10.0.2.2:3000';
+  bool _loadingGoogle = false;
 
   Future<void> _loginWith(String provider) async {
-  setState(() {
-    if (provider == 'spotify') {
-      _loadingSpotify = true;
-    } else {
-      _loadingGoogle = true;
-    }
-  });
+    setState(() {
+      if (provider == 'spotify') {
+        _loadingSpotify = true;
+      } else {
+        _loadingGoogle = true;
+      }
+    });
 
-  try {
-    final uri = Uri.parse('$_backendUrl/api/auth/$provider');
-    await launchUrl(uri, mode: LaunchMode.externalApplication);
-  } catch (e) {
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Could not connect to $provider'),
-          backgroundColor: Colors.red,
-        ),
-      );
-    }
-  } finally {
-    if (mounted) {
-      setState(() {
-        _loadingSpotify = false;
-        _loadingGoogle  = false;
-      });
+    try {
+      final uri = Uri.parse('${AppConfig.backendUrl}/api/auth/$provider');
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Could not connect to $provider'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _loadingSpotify = false;
+          _loadingGoogle = false;
+        });
+      }
     }
   }
-}
 
   @override
   Widget build(BuildContext context) {
@@ -110,16 +110,16 @@ class _LoginScreenState extends State<LoginScreen> {
 
                 _OAuthButton(
                   label: 'Continue with Spotify',
-                  iconAsset: 'assets/icons/spotify.png',
-                  iconBg:const Color(0xFF1DB954),
+                  icon: FontAwesomeIcons.spotify,
+                  iconBg: const Color(0xFF1DB954),
                   isLoading: _loadingSpotify,
                   onTap: () => _loginWith('spotify'),
                 ),
                 const SizedBox(height: AppSpacing.sm),
                 _OAuthButton(
                   label: 'Continue with YouTube Music',
-                  iconAsset: 'assets/icons/youtube.png',
-                  iconBg:const Color(0xFFFF0000),
+                  icon: FontAwesomeIcons.youtube,
+                  iconBg: const Color(0xFFFF0000),
                   isLoading: _loadingGoogle,
                   onTap: () => _loginWith('google'),
                 ),
@@ -148,15 +148,15 @@ class _LoginScreenState extends State<LoginScreen> {
 // ─── OAUTH BUTTON ──────────────────────────────────────────────
 
 class _OAuthButton extends StatelessWidget {
-  final String      label;
-  final String      iconAsset;
-  final Color       iconBg;
-  final bool        isLoading;
+  final String label;
+  final IconData icon;
+  final Color iconBg;
+  final bool isLoading;
   final VoidCallback onTap;
 
   const _OAuthButton({
     required this.label,
-    required this.iconAsset,
+    required this.icon,
     required this.iconBg,
     required this.isLoading,
     required this.onTap,
@@ -169,7 +169,7 @@ class _OAuthButton extends StatelessWidget {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return SizedBox(
-      width:  double.infinity,
+      width: double.infinity,
       height: 56,
       child: Material(
         color: isDark ? AppColors.cardDark : AppColors.cardLight,
@@ -196,17 +196,8 @@ class _OAuthButton extends StatelessWidget {
                     color: iconBg,
                     borderRadius: BorderRadius.circular(AppSpacing.radiusSm),
                   ),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(AppSpacing.radiusSm),
-                    child: Image.asset(
-                      iconAsset,
-                      fit: BoxFit.cover,
-                      errorBuilder: (_, __, ___) => const Icon(
-                        Icons.music_note_rounded,
-                        color: Colors.white,
-                        size: 18,
-                      ),
-                    ),
+                  child: Center(
+                    child: FaIcon(icon, color: Colors.white, size: 18),
                   ),
                 ),
                 const SizedBox(width: AppSpacing.md),

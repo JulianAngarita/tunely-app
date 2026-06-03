@@ -1,10 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:tunely/core/themes/app_colors.dart';
+import '../../../core/themes/app_colors.dart';
 
-/// Bottom navigation bar reutilizable para toda la app.
-/// Úsalo en tu ShellRoute de go_router para que persista entre pantallas.
 class TunelyBottomNav extends StatelessWidget {
-  final int    currentIndex;
+  final int currentIndex;
   final void Function(int) onTap;
 
   const TunelyBottomNav({
@@ -14,10 +12,10 @@ class TunelyBottomNav extends StatelessWidget {
   });
 
   static const _items = [
-    _NavItem(icon: Icons.home_rounded,         label: 'Home'),
-    _NavItem(icon: Icons.search_rounded,        label: 'Add'),
-    _NavItem(icon: Icons.notifications_outlined,label: 'Activity'),
-    _NavItem(icon: Icons.person_outline_rounded,label: 'Profile'),
+    _NavItem(icon: Icons.home_rounded,          label: 'Home'),
+    _NavItem(icon: Icons.search_rounded,         label: 'Add'),
+    _NavItem(icon: Icons.notifications_outlined, label: 'Activity'),
+    _NavItem(icon: Icons.person_outline_rounded, label: 'Profile'),
   ];
 
   @override
@@ -50,7 +48,7 @@ class TunelyBottomNav extends StatelessWidget {
                     children: [
                       Icon(
                         _items[i].icon,
-                        size: 24,
+                        size:  24,
                         color: isSelected
                             ? AppColors.primary
                             : cs.onSurface.withOpacity(0.4),
@@ -59,7 +57,7 @@ class TunelyBottomNav extends StatelessWidget {
                       Text(
                         _items[i].label,
                         style: TextStyle(
-                          fontSize: 11,
+                          fontSize:   11,
                           fontWeight: isSelected
                               ? FontWeight.w600
                               : FontWeight.w400,

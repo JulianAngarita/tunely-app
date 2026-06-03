@@ -1,194 +1,142 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:tunely/core/themes/app_colors.dart';
+import 'package:tunely/features/home/create_playlist_screen.dart';
 import '../../core/constants/app_spacing.dart';
+import 'providers/playlists_provider.dart';
+import 'providers/activity_provider.dart';
 import 'widgets/playlist_card.dart';
 import 'widgets/activity_item.dart';
 import 'widgets/section_header.dart';
-
-// ─── MODELS ────────────────────────────────────────────────────
-
-enum SyncStatus { synced, syncing, error }
-
-class PlaylistModel {
-  final String id;
-  final String name;
-  final int trackCount;
-  final List<Color> coverGradient;
-  final List<String> memberInitials;
-  final List<Color> memberColors;
-  final SyncStatus syncStatus;
-  final String syncLabel;   // "2 hours ago", "1 day ago", etc.
-
-  const PlaylistModel({
-    required this.id,
-    required this.name,
-    required this.trackCount,
-    required this.coverGradient,
-    required this.memberInitials,
-    required this.memberColors,
-    required this.syncStatus,
-    required this.syncLabel,
-  });
-}
-
-class ActivityModel {
-  final String id;
-  final String initial;
-  final Color  avatarColor;
-  final String richText;    // e.g. "Sarah added Blinding Lights"
-  final String boldName;    // e.g. "Sarah" — se pone en bold
-  final String subtitle;    // e.g. "The Weeknd · 2h ago"
-  final String? emoji;      // opcional, e.g. "❤️"
-
-  const ActivityModel({
-    required this.id,
-    required this.initial,
-    required this.avatarColor,
-    required this.richText,
-    required this.boldName,
-    required this.subtitle,
-    this.emoji,
-  });
-}
-
-// ─── MOCK DATA (reemplazar con datos reales del provider) ───────
-
-final _mockPlaylists = [
-  PlaylistModel(
-    id: '1',
-    name: 'Our Summer Vibes',
-    trackCount: 42,
-    coverGradient: [const Color(0xFFFF6B9D), const Color(0xFFFF8E6E)],
-    memberInitials: ['S', 'Y'],
-    memberColors: [const Color(0xFFE91E8C), const Color(0xFF7C4DFF)],
-    syncStatus: SyncStatus.synced,
-    syncLabel: '2 hours ago',
-  ),
-  PlaylistModel(
-    id: '2',
-    name: 'Road Trip Mix',
-    trackCount: 87,
-    coverGradient: [const Color(0xFF4DD0E1), const Color(0xFF26C6DA)],
-    memberInitials: ['A', 'J', 'Y'],
-    memberColors: [
-      const Color(0xFF4CAF50),
-      const Color(0xFFE91E8C),
-      const Color(0xFF7C4DFF),
-    ],
-    syncStatus: SyncStatus.synced,
-    syncLabel: '1 day ago',
-  ),
-  PlaylistModel(
-    id: '3',
-    name: 'Study Sessions',
-    trackCount: 23,
-    coverGradient: [const Color(0xFF7C4DFF), const Color(0xFF9C6FFF)],
-    memberInitials: ['M', 'Y'],
-    memberColors: [const Color(0xFFE91E8C), const Color(0xFF7C4DFF)],
-    syncStatus: SyncStatus.syncing,
-    syncLabel: '3 days ago',
-  ),
-];
-
-final _mockActivity = [
-  ActivityModel(
-    id: '1',
-    initial: 'S',
-    avatarColor: const Color(0xFFFFB3C6),
-    richText: 'added Blinding Lights',
-    boldName: 'Sarah',
-    subtitle: 'The Weeknd · 2h ago',
-  ),
-  ActivityModel(
-    id: '2',
-    initial: 'A',
-    avatarColor: const Color(0xFF80DEEA),
-    richText: 'reacted  to Levitating',
-    boldName: 'Alex',
-    subtitle: 'Dua Lipa · 5h ago',
-    emoji: '❤️',
-  ),
-];
-
+import 'package:go_router/go_router.dart';
 // ─── SCREEN ────────────────────────────────────────────────────
 
-class HomeScreen extends StatelessWidget {
+class HomeScreen extends ConsumerWidget {
   const HomeScreen({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final playlists = ref.watch(playlistsProvider);
+    final activity = ref.watch(activityProvider);
 
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: isDark ? SystemUiOverlayStyle.light : SystemUiOverlayStyle.dark,
       child: Scaffold(
         backgroundColor: Theme.of(context).scaffoldBackgroundColor,
         body: SafeArea(
-          child: CustomScrollView(
-            slivers: [
-              // ── App Bar ───────────────────────────────────────
-              SliverToBoxAdapter(
-                child: _HomeAppBar(
-                  onAddTap: () {
-                    // TODO: navegar a crear playlist
-                  },
+          child: RefreshIndicator(
+            // Pull to refresh invalida ambos providers
+            onRefresh: () async {
+              ref.invalidate(playlistsProvider);
+              ref.invalidate(activityProvider);
+            },
+            color: AppColors.primary,
+            child: CustomScrollView(
+              slivers: [
+                // ── App Bar ─────────────────────────────────────
+                SliverToBoxAdapter(
+                  child: _HomeAppBar(
+                    onAddTap: () {
+                      showModalBottomSheet(
+                        context: context,
+                        isScrollControlled: true,
+                        backgroundColor: Colors.transparent,
+                        builder: (_) => DraggableScrollableSheet(
+                          initialChildSize: 0.92,
+                          maxChildSize: 0.92,
+                          minChildSize: 0.5,
+                          builder: (_, controller) => CreatePlaylistScreen(
+                            onCreated: () => Navigator.of(context).pop(),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
                 ),
-              ),
 
-              // ── Shared Playlists ──────────────────────────────
-              SliverToBoxAdapter(
-                child: SectionHeader(
-                  title: 'Shared Playlists',
-                  actionLabel: 'See All',
-                  onActionTap: () {
-                    // TODO: navegar a todas las playlists
-                  },
+                // ── Shared Playlists ────────────────────────────
+                SliverToBoxAdapter(
+                  child: SectionHeader(
+                    title: 'Shared Playlists',
+                    actionLabel: 'See All',
+                    onActionTap: () {
+                      // TODO: navegar a todas las playlists
+                    },
+                  ),
                 ),
-              ),
-              SliverList(
-                delegate: SliverChildBuilderDelegate(
-                  (context, i) => Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: AppSpacing.md,
-                    ).copyWith(bottom: AppSpacing.sm),
-                    child: PlaylistCard(
-                      playlist: _mockPlaylists[i],
-                      onTap: () {
-                        // TODO: navegar a detalle de playlist
-                      },
+
+                // Estado de playlists: loading / error / data
+                playlists.when(
+                  loading: () =>
+                      const SliverToBoxAdapter(child: _PlaylistsShimmer()),
+                  error: (err, _) => SliverToBoxAdapter(
+                    child: _ErrorRetry(
+                      message: 'Could not load playlists',
+                      onRetry: () => ref.invalidate(playlistsProvider),
                     ),
                   ),
-                  childCount: _mockPlaylists.length,
+                  data: (list) => list.isEmpty
+                      ? const SliverToBoxAdapter(child: _EmptyPlaylists())
+                      : SliverList(
+                          delegate: SliverChildBuilderDelegate(
+                            (context, i) => Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: AppSpacing.md,
+                              ).copyWith(bottom: AppSpacing.sm),
+                              child: PlaylistCard(
+                                playlist: list[i],
+                                onTap: () =>
+                                    context.push('/playlist/${list[i].id}'),
+                              ),
+                            ),
+                            childCount: list.length,
+                          ),
+                        ),
                 ),
-              ),
 
-              // ── Recent Activity ───────────────────────────────
-              SliverToBoxAdapter(
-                child: SectionHeader(
-                  title: 'Recent Activity',
-                  actionLabel: 'View All',
-                  onActionTap: () {
-                    // TODO: navegar a actividad completa
-                  },
-                ),
-              ),
-              SliverList(
-                delegate: SliverChildBuilderDelegate(
-                  (context, i) => Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: AppSpacing.md,
-                    ).copyWith(bottom: AppSpacing.sm),
-                    child: ActivityItem(activity: _mockActivity[i]),
+                // ── Recent Activity ─────────────────────────────
+                SliverToBoxAdapter(
+                  child: SectionHeader(
+                    title: 'Recent Activity',
+                    actionLabel: 'View All',
+                    onActionTap: () {
+                      // TODO: navegar a actividad completa
+                    },
                   ),
-                  childCount: _mockActivity.length,
                 ),
-              ),
 
-              const SliverToBoxAdapter(
-                child: SizedBox(height: AppSpacing.xl),
-              ),
-            ],
+                // Estado de activity: loading / error / data
+                activity.when(
+                  loading: () =>
+                      const SliverToBoxAdapter(child: _ActivityShimmer()),
+                  error: (err, _) => SliverToBoxAdapter(
+                    child: _ErrorRetry(
+                      message: 'Could not load activity',
+                      onRetry: () => ref.invalidate(activityProvider),
+                    ),
+                  ),
+                  data: (list) => list.isEmpty
+                      ? const SliverToBoxAdapter(child: _EmptyActivity())
+                      : SliverList(
+                          delegate: SliverChildBuilderDelegate(
+                            (context, i) => Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: AppSpacing.md,
+                              ).copyWith(bottom: AppSpacing.sm),
+                              child: ActivityItem(activity: list[i]),
+                            ),
+                            childCount: list.length,
+                          ),
+                        ),
+                ),
+
+                const SliverToBoxAdapter(
+                  child: SizedBox(height: AppSpacing.xl),
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -209,11 +157,13 @@ class _HomeAppBar extends StatelessWidget {
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(
-        AppSpacing.md, AppSpacing.lg, AppSpacing.md, AppSpacing.sm,
+        AppSpacing.md,
+        AppSpacing.lg,
+        AppSpacing.md,
+        AppSpacing.sm,
       ),
       child: Row(
         children: [
-          // Title + subtitle
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -231,8 +181,6 @@ class _HomeAppBar extends StatelessWidget {
               ],
             ),
           ),
-
-          // FAB circular
           GestureDetector(
             onTap: onAddTap,
             child: Container(
@@ -246,6 +194,168 @@ class _HomeAppBar extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+// ─── LOADING SHIMMER ───────────────────────────────────────────
+
+class _PlaylistsShimmer extends StatelessWidget {
+  const _PlaylistsShimmer();
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: List.generate(
+        3,
+        (_) => Padding(
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppSpacing.md,
+            vertical: AppSpacing.xs,
+          ),
+          child: _ShimmerBox(height: 88, radius: AppSpacing.radiusLg),
+        ),
+      ),
+    );
+  }
+}
+
+class _ActivityShimmer extends StatelessWidget {
+  const _ActivityShimmer();
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: List.generate(
+        2,
+        (_) => Padding(
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppSpacing.md,
+            vertical: AppSpacing.xs,
+          ),
+          child: _ShimmerBox(height: 64, radius: AppSpacing.radiusLg),
+        ),
+      ),
+    );
+  }
+}
+
+class _ShimmerBox extends StatelessWidget {
+  final double height;
+  final double radius;
+  const _ShimmerBox({required this.height, required this.radius});
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Container(
+      height: height,
+      decoration: BoxDecoration(
+        color: isDark
+            ? Colors.white.withOpacity(0.06)
+            : Colors.black.withOpacity(0.06),
+        borderRadius: BorderRadius.circular(radius),
+      ),
+    );
+  }
+}
+
+// ─── ERROR STATE ───────────────────────────────────────────────
+
+class _ErrorRetry extends StatelessWidget {
+  final String message;
+  final VoidCallback onRetry;
+  const _ErrorRetry({required this.message, required this.onRetry});
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final tt = Theme.of(context).textTheme;
+
+    return Padding(
+      padding: const EdgeInsets.all(AppSpacing.xl),
+      child: Column(
+        children: [
+          Icon(
+            Icons.wifi_off_rounded,
+            size: 40,
+            color: cs.onSurface.withOpacity(0.3),
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          Text(
+            message,
+            style: tt.bodyMedium?.copyWith(
+              color: cs.onSurface.withOpacity(0.5),
+            ),
+          ),
+          const SizedBox(height: AppSpacing.md),
+          TextButton(
+            onPressed: onRetry,
+            child: Text(
+              'Retry',
+              style: tt.bodyMedium?.copyWith(color: AppColors.primary),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─── EMPTY STATES ──────────────────────────────────────────────
+
+class _EmptyPlaylists extends StatelessWidget {
+  const _EmptyPlaylists();
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final tt = Theme.of(context).textTheme;
+    return Padding(
+      padding: const EdgeInsets.all(AppSpacing.xl),
+      child: Column(
+        children: [
+          Icon(
+            Icons.queue_music_rounded,
+            size: 48,
+            color: cs.onSurface.withOpacity(0.2),
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          Text(
+            'No playlists yet',
+            style: tt.titleMedium?.copyWith(
+              color: cs.onSurface.withOpacity(0.4),
+            ),
+          ),
+          const SizedBox(height: AppSpacing.xs),
+          Text(
+            'Tap + to create your first shared playlist',
+            textAlign: TextAlign.center,
+            style: tt.bodySmall?.copyWith(color: cs.onSurface.withOpacity(0.3)),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _EmptyActivity extends StatelessWidget {
+  const _EmptyActivity();
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final tt = Theme.of(context).textTheme;
+    return Padding(
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.md,
+        vertical: AppSpacing.lg,
+      ),
+      child: Text(
+        'No activity yet — invite someone to collaborate!',
+        textAlign: TextAlign.center,
+        style: tt.bodySmall?.copyWith(color: cs.onSurface.withOpacity(0.3)),
       ),
     );
   }
