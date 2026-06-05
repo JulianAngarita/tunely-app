@@ -1,13 +1,14 @@
 import 'package:flutter/material.dart';
 
 class ActivityModel {
-  final String  id;
-  final String  initial;
-  final Color   avatarColor;
-  final String  richText;
-  final String  boldName;
-  final String  subtitle;
+  final String id;
+  final String initial;
+  final Color avatarColor;
+  final String richText;
+  final String boldName;
+  final String subtitle;
   final String? emoji;
+  final String? playlistId; // ← nuevo
 
   const ActivityModel({
     required this.id,
@@ -17,13 +18,14 @@ class ActivityModel {
     required this.boldName,
     required this.subtitle,
     this.emoji,
+    this.playlistId, // ← nuevo,
   });
 
   factory ActivityModel.fromJson(Map<String, dynamic> json) {
-    final user    = json['users'] as Map<String, dynamic>?;
-    final name    = (user?['name'] as String?) ?? 'Unknown';
+    final user = json['users'] as Map<String, dynamic>?;
+    final name = (user?['name'] as String?) ?? 'Unknown';
     final initial = name.isNotEmpty ? name[0].toUpperCase() : '?';
-    final action  = json['action'] as String? ?? '';
+    final action = json['action'] as String? ?? '';
     final details = json['details'] as Map<String, dynamic>?;
 
     // Construir richText según el tipo de acción
@@ -69,13 +71,14 @@ class ActivityModel {
     final colorIndex = name.codeUnitAt(0) % colors.length;
 
     return ActivityModel(
-      id:          json['id'] as String,
-      initial:     initial,
+      id: json['id'] as String,
+      initial: initial,
       avatarColor: colors[colorIndex],
-      richText:    richText,
-      boldName:    name,
-      subtitle:    subtitle,
-      emoji:       emoji,
+      richText: richText,
+      boldName: name,
+      subtitle: subtitle,
+      emoji: emoji,
+      playlistId: json['playlist_id'] as String?,
     );
   }
 
@@ -83,7 +86,7 @@ class ActivityModel {
     if (date == null) return '';
     final diff = DateTime.now().difference(date);
     if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
-    if (diff.inHours   < 24) return '${diff.inHours}h ago';
+    if (diff.inHours < 24) return '${diff.inHours}h ago';
     return '${diff.inDays}d ago';
   }
 }

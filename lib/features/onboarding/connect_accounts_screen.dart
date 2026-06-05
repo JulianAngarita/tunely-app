@@ -1,46 +1,49 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:tunely/core/constants/app_spacing.dart';
-import 'package:tunely/core/themes/app_colors.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
+import 'package:url_launcher/url_launcher.dart';
+import '../../../core/constants/app_spacing.dart';
+import '../../../core/constants/app_config.dart';
+import '../../../core/themes/app_colors.dart';
 
-// ─── MODEL ─────────────────────────────────────────────────────
-class _ServiceData {
-  final String name;
-  final String logoAsset; // e.g. 'assets/icons/spotify.png'
-  final Color  logoBg;
-  final bool   isConnected;
-
-  const _ServiceData({
-    required this.name,
-    required this.logoAsset,
-    required this.logoBg,
-    required this.isConnected,
-  });
-}
-
-// ─── SCREEN ────────────────────────────────────────────────────
 class ConnectAccountsScreen extends StatefulWidget {
-  /// Called when the user taps Continue (at least one connected)
   final VoidCallback? onContinue;
-
   const ConnectAccountsScreen({super.key, this.onContinue});
 
   @override
   State<ConnectAccountsScreen> createState() => _ConnectAccountsScreenState();
 }
 
-class _ConnectAccountsScreenState extends State<ConnectAccountsScreen> {
-  // En producción este estado vendrá de tu auth provider/bloc
-  final Map<String, bool> _connected = {
-    'spotify': false,
-    'youtube': false,
-  };
+class _ConnectAccountsScreenState extends State<ConnectAccountsScreen>
+    with TickerProviderStateMixin {
+  final Map<String, bool> _connected = {'spotify': false, 'youtube': false};
+  late final AnimationController _fadeCtrl;
+  late final Animation<double> _fadeAnim;
 
   bool get _canContinue => _connected.values.any((v) => v);
 
-  void _toggle(String key) {
-    // Aquí dispararás el OAuth real; por ahora toggleamos localmente
-    setState(() => _connected[key] = !(_connected[key] ?? false));
+  @override
+  void initState() {
+    super.initState();
+    _fadeCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 600),
+    )..forward();
+    _fadeAnim = CurvedAnimation(parent: _fadeCtrl, curve: Curves.easeOut);
+  }
+
+  @override
+  void dispose() {
+    _fadeCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _connect(String provider) async {
+    final uri = Uri.parse('${AppConfig.backendUrl}/api/auth/$provider');
+    await launchUrl(uri, mode: LaunchMode.externalApplication);
+    // El deep link actualizará el estado al volver
+    // Por ahora marcamos como conectado visualmente
+    setState(() => _connected[provider] = true);
   }
 
   @override
@@ -54,90 +57,78 @@ class _ConnectAccountsScreenState extends State<ConnectAccountsScreen> {
       child: Scaffold(
         backgroundColor: cs.surface,
         body: SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
-            child: Column(
-              children: [
-                const SizedBox(height: AppSpacing.xxl),
+          child: FadeTransition(
+            opacity: _fadeAnim,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
+              child: Column(
+                children: [
+                  const Spacer(flex: 2),
 
-                // ── Logo icon ──────────────────────────────────
-                Container(
-                  width: 96,
-                  height: 96,
-                  decoration: const BoxDecoration(
-                    shape: BoxShape.circle,
-                    gradient: LinearGradient(
-                      colors: [AppColors.gradientStart, AppColors.gradientEnd],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
+                  // ── Illustration ───────────────────────────
+                  _Illustration(),
+                  const SizedBox(height: AppSpacing.xl),
+
+                  // ── Headline ───────────────────────────────
+                  Text(
+                    'Connect Your\nMusic',
+                    style: tt.displayLarge?.copyWith(
+                      color: cs.onSurface,
+                      height: 1.1,
+                      fontSize: 36,
+                      fontWeight: FontWeight.w800,
                     ),
+                    textAlign: TextAlign.center,
                   ),
-                  child: const Icon(
-                    Icons.music_note_rounded,
-                    color: Colors.white,
-                    size: 44,
+                  const SizedBox(height: AppSpacing.sm),
+                  Text(
+                    'Link at least one music service to start\ncreating collaborative playlists',
+                    style: tt.bodyMedium?.copyWith(
+                      color: cs.onSurface.withOpacity(0.5),
+                      height: 1.6,
+                    ),
+                    textAlign: TextAlign.center,
                   ),
-                ),
-                const SizedBox(height: AppSpacing.lg),
 
-                // ── Title ──────────────────────────────────────
-                Text(
-                  'Connect Your Music',
-                  style: tt.displayLarge?.copyWith(color: cs.onSurface),
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: AppSpacing.sm),
+                  const Spacer(flex: 2),
 
-                // ── Subtitle ───────────────────────────────────
-                Text(
-                  'Link at least one music service to start creating collaborative playlists',
-                  style: tt.bodyMedium?.copyWith(
-                    color: cs.onSurface.withOpacity(0.5),
-                    height: 1.5,
-                    fontSize: 15,
+                  // ── Platform cards ─────────────────────────
+                  _PlatformCard(
+                    name: 'Spotify',
+                    description: 'Stream and sync your music',
+                    faIcon: FontAwesomeIcons.spotify,
+                    color: const Color(0xFF1DB954),
+                    isConnected: _connected['spotify']!,
+                    onTap: () => _connect('spotify'),
                   ),
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: AppSpacing.xxl),
-
-                // ── Service cards ──────────────────────────────
-                _ServiceCard(
-                  name: 'Spotify',
-                  subtitle: _connected['spotify']! ? 'Connected' : 'Connect your account',
-                  logoAsset: 'assets/icons/spotify.png',
-                  logoBg: const Color(0xFF1DB954),
-                  isConnected: _connected['spotify']!,
-                  onTap: () => _toggle('spotify'),
-                ),
-                const SizedBox(height: AppSpacing.md),
-                _ServiceCard(
-                  name: 'YouTube Music',
-                  subtitle: _connected['youtube']! ? 'Connected' : 'Connect your account',
-                  logoAsset: 'assets/icons/youtube.png',
-                  logoBg: const Color(0xFFFF0000),
-                  isConnected: _connected['youtube']!,
-                  onTap: () => _toggle('youtube'),
-                ),
-
-                const Spacer(),
-
-                // ── Continue button ────────────────────────────
-                _ContinueButton(
-                  enabled: _canContinue,
-                  onTap: _canContinue ? widget.onContinue : null,
-                ),
-                const SizedBox(height: AppSpacing.sm),
-
-                // ── Footer hint ────────────────────────────────
-                Text(
-                  'You can connect additional services later in settings',
-                  style: tt.bodySmall?.copyWith(
-                    color: cs.onSurface.withOpacity(0.4),
+                  const SizedBox(height: AppSpacing.md),
+                  _PlatformCard(
+                    name: 'YouTube Music',
+                    description: 'Connect your YouTube account',
+                    faIcon: FontAwesomeIcons.youtube,
+                    color: const Color(0xFFFF0000),
+                    isConnected: _connected['youtube']!,
+                    onTap: () => _connect('google'),
                   ),
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: AppSpacing.lg),
-              ],
+
+                  const Spacer(flex: 1),
+
+                  // ── Continue ───────────────────────────────
+                  _ContinueButton(
+                    enabled: _canContinue,
+                    onTap: _canContinue ? widget.onContinue : null,
+                  ),
+                  const SizedBox(height: AppSpacing.sm),
+                  Text(
+                    'You can connect more services later in Settings',
+                    style: tt.bodySmall?.copyWith(
+                      color: cs.onSurface.withOpacity(0.35),
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: AppSpacing.lg),
+                ],
+              ),
             ),
           ),
         ),
@@ -146,47 +137,132 @@ class _ConnectAccountsScreenState extends State<ConnectAccountsScreen> {
   }
 }
 
-// ─── SERVICE CARD ──────────────────────────────────────────────
-class _ServiceCard extends StatelessWidget {
-  final String   name;
-  final String   subtitle;
-  final String   logoAsset;
-  final Color    logoBg;
-  final bool     isConnected;
+// ─── ILLUSTRATION ──────────────────────────────────────────────
+
+class _Illustration extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 120,
+      height: 120,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          // Outer glow ring
+          Container(
+            width: 120,
+            height: 120,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              gradient: RadialGradient(
+                colors: [
+                  AppColors.primary.withOpacity(0.15),
+                  AppColors.primary.withOpacity(0.0),
+                ],
+              ),
+            ),
+          ),
+          // Main circle
+          Container(
+            width: 80,
+            height: 80,
+            decoration: const BoxDecoration(
+              shape: BoxShape.circle,
+              gradient: AppColors.brandGradient,
+            ),
+            child: const Icon(
+              Icons.music_note_rounded,
+              color: Colors.white,
+              size: 36,
+            ),
+          ),
+          // Spotify badge
+          Positioned(
+            right: 4,
+            top: 8,
+            child: _PlatformBadge(
+              color: const Color(0xFF1DB954),
+              icon: FontAwesomeIcons.spotify,
+            ),
+          ),
+          // YouTube badge
+          Positioned(
+            left: 4,
+            bottom: 8,
+            child: _PlatformBadge(
+              color: const Color(0xFFFF0000),
+              icon: FontAwesomeIcons.youtube,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PlatformBadge extends StatelessWidget {
+  final Color color;
+  final IconData icon;
+  const _PlatformBadge({required this.color, required this.icon});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 28,
+      height: 28,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: color,
+        boxShadow: [
+          BoxShadow(
+            color: color.withOpacity(0.4),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Center(child: FaIcon(icon, color: Colors.white, size: 13)),
+    );
+  }
+}
+
+// ─── PLATFORM CARD ─────────────────────────────────────────────
+
+class _PlatformCard extends StatelessWidget {
+  final String name;
+  final String description;
+  final IconData faIcon;
+  final Color color;
+  final bool isConnected;
   final VoidCallback onTap;
 
-  const _ServiceCard({
+  const _PlatformCard({
     required this.name,
-    required this.subtitle,
-    required this.logoAsset,
-    required this.logoBg,
+    required this.description,
+    required this.faIcon,
+    required this.color,
     required this.isConnected,
     required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
-    final cs  = Theme.of(context).colorScheme;
-    final tt  = Theme.of(context).textTheme;
+    final cs = Theme.of(context).colorScheme;
+    final tt = Theme.of(context).textTheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    // Fondo del card: tinte primario suave en ambos temas
-    final cardBg = isDark
-        ? AppColors.primary.withOpacity(0.12)
-        : AppColors.primary.withOpacity(0.07);
-
-    // Borde: más visible cuando está conectado
-    final borderColor = isConnected
-        ? AppColors.primary.withOpacity(0.7)
-        : AppColors.primary.withOpacity(0.25);
-
     return AnimatedContainer(
-      duration: const Duration(milliseconds: 250),
+      duration: const Duration(milliseconds: 300),
       curve: Curves.easeInOut,
       decoration: BoxDecoration(
-        color: cardBg,
+        color: isDark
+            ? (isConnected ? color.withOpacity(0.12) : AppColors.cardDark)
+            : (isConnected ? color.withOpacity(0.06) : AppColors.cardLight),
         borderRadius: BorderRadius.circular(AppSpacing.radiusLg),
-        border: Border.all(color: borderColor, width: 1.5),
+        border: Border.all(
+          color: isConnected ? color.withOpacity(0.5) : Colors.transparent,
+          width: 1.5,
+        ),
       ),
       child: Material(
         color: Colors.transparent,
@@ -201,11 +277,30 @@ class _ServiceCard extends StatelessWidget {
             ),
             child: Row(
               children: [
-                // Logo
-                _ServiceLogo(asset: logoAsset, bg: logoBg),
+                // Platform icon
+                Container(
+                  width: 48,
+                  height: 48,
+                  decoration: BoxDecoration(
+                    color: color,
+                    borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+                    boxShadow: isConnected
+                        ? [
+                            BoxShadow(
+                              color: color.withOpacity(0.4),
+                              blurRadius: 12,
+                              offset: const Offset(0, 4),
+                            ),
+                          ]
+                        : null,
+                  ),
+                  child: Center(
+                    child: FaIcon(faIcon, color: Colors.white, size: 22),
+                  ),
+                ),
                 const SizedBox(width: AppSpacing.md),
 
-                // Name + status
+                // Name + description
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -214,32 +309,40 @@ class _ServiceCard extends StatelessWidget {
                         name,
                         style: tt.titleMedium?.copyWith(
                           color: cs.onSurface,
+                          fontWeight: FontWeight.w600,
                         ),
                       ),
                       const SizedBox(height: 2),
                       Text(
-                        subtitle,
-                        style: tt.bodyMedium?.copyWith(
-                          color: cs.onSurface.withOpacity(0.5),
+                        isConnected ? 'Connected ✓' : description,
+                        style: tt.bodySmall?.copyWith(
+                          color: isConnected
+                              ? color
+                              : cs.onSurface.withOpacity(0.4),
+                          fontWeight: isConnected
+                              ? FontWeight.w600
+                              : FontWeight.w400,
                         ),
                       ),
                     ],
                   ),
                 ),
 
-                // Check icon animado
+                // Status icon
                 AnimatedSwitcher(
-                  duration: const Duration(milliseconds: 200),
+                  duration: const Duration(milliseconds: 250),
+                  transitionBuilder: (child, anim) =>
+                      ScaleTransition(scale: anim, child: child),
                   child: isConnected
                       ? Icon(
-                          Icons.check_circle_outline_rounded,
-                          key: const ValueKey('connected'),
-                          color: AppColors.primary,
+                          Icons.check_circle_rounded,
+                          key: const ValueKey('on'),
+                          color: color,
                           size: 24,
                         )
                       : Icon(
-                          Icons.radio_button_unchecked_rounded,
-                          key: const ValueKey('disconnected'),
+                          Icons.add_circle_outline_rounded,
+                          key: const ValueKey('off'),
                           color: cs.onSurface.withOpacity(0.25),
                           size: 24,
                         ),
@@ -253,40 +356,8 @@ class _ServiceCard extends StatelessWidget {
   }
 }
 
-// ─── SERVICE LOGO ──────────────────────────────────────────────
-// Usa Image.asset si tienes los logos; si no, muestra la inicial como fallback
-class _ServiceLogo extends StatelessWidget {
-  final String asset;
-  final Color  bg;
-  const _ServiceLogo({required this.asset, required this.bg});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: 48,
-      height: 48,
-      decoration: BoxDecoration(
-        color: bg,
-        borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
-      ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
-        child: Image.asset(
-          asset,
-          fit: BoxFit.cover,
-          // Si el asset no existe aún, muestra ícono de placeholder
-          errorBuilder: (_, __, ___) => const Icon(
-            Icons.music_note_rounded,
-            color: Colors.white,
-            size: 26,
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 // ─── CONTINUE BUTTON ───────────────────────────────────────────
+
 class _ContinueButton extends StatelessWidget {
   final bool enabled;
   final VoidCallback? onTap;
@@ -300,12 +371,23 @@ class _ContinueButton extends StatelessWidget {
       width: double.infinity,
       height: 56,
       child: AnimatedOpacity(
-        duration: const Duration(milliseconds: 250),
-        opacity: enabled ? 1.0 : 0.45,
+        duration: const Duration(milliseconds: 300),
+        opacity: enabled ? 1.0 : 0.35,
         child: DecoratedBox(
           decoration: BoxDecoration(
-            gradient: AppColors.brandGradient,
+            gradient: enabled
+                ? AppColors.brandGradient
+                : const LinearGradient(colors: [Colors.grey, Colors.grey]),
             borderRadius: BorderRadius.circular(AppSpacing.radiusPill),
+            boxShadow: enabled
+                ? [
+                    BoxShadow(
+                      color: AppColors.primary.withOpacity(0.3),
+                      blurRadius: 16,
+                      offset: const Offset(0, 6),
+                    ),
+                  ]
+                : null,
           ),
           child: ElevatedButton(
             onPressed: onTap,
@@ -319,7 +401,11 @@ class _ContinueButton extends StatelessWidget {
             ),
             child: Text(
               'Continue',
-              style: tt.labelLarge?.copyWith(color: Colors.white),
+              style: tt.labelLarge?.copyWith(
+                color: Colors.white,
+                fontWeight: FontWeight.w700,
+                fontSize: 16,
+              ),
             ),
           ),
         ),

@@ -2,10 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:tunely/core/router/app_router_with_deeplink.dart';
 import 'package:tunely/features/add_song/add_song_screen.dart';
 import 'package:tunely/features/home/providers/playlists_provider.dart';
+import 'package:tunely/features/playlist_detail/widgets/activity_tab.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../../core/themes/app_colors.dart';
 import '../../../core/constants/app_spacing.dart';
+import '../../../core/network/api_client.dart';
 import 'providers/playlist_detail_provider.dart';
 import 'models/playlist_detail_model.dart';
 import 'widgets/song_card.dart';
@@ -53,15 +57,7 @@ class _PlaylistDetailScreenState extends ConsumerState<PlaylistDetailScreen>
         },
         onAddSong: () {
           Navigator.pop(context);
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (_) => AddSongScreen(
-                playlistId: playlist.id,
-                playlistName: playlist.name,
-              ),
-            ),
-          );
+          _navigateToAddSong(playlist);
         },
       ),
     );
@@ -74,6 +70,16 @@ class _PlaylistDetailScreenState extends ConsumerState<PlaylistDetailScreen>
       builder: (_) => _ShareSheet(
         playlistName: playlist.name,
         inviteCode: playlist.inviteCode,
+      ),
+    );
+  }
+
+  void _navigateToAddSong(PlaylistDetailModel playlist) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) =>
+            AddSongScreen(playlistId: playlist.id, playlistName: playlist.name),
       ),
     );
   }
@@ -114,6 +120,38 @@ class _PlaylistDetailScreenState extends ConsumerState<PlaylistDetailScreen>
     }
   }
 
+  // ─── PLAY PLAYLIST ───────────────────────────────────────────
+
+  Future<void> _playPlaylist(String playlistId) async {
+    try {
+      final router = ref.read(routerProvider);
+      final client = ref.read(apiClientProvider(router));
+      final response = await client.get('/playlists/$playlistId/play');
+      final body = response.data as Map<String, dynamic>;
+      final data = body['data'] as Map<String, dynamic>;
+      final url = data['url'] as String;
+
+      final uri = Uri.parse(url);
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+      } else if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not open playlist')),
+        );
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'No playlist mirror found for your preferred platform',
+            ),
+          ),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final playlistAsync = ref.watch(playlistDetailProvider(widget.playlistId));
@@ -147,6 +185,8 @@ class _PlaylistDetailScreenState extends ConsumerState<PlaylistDetailScreen>
             onBack: () => context.pop(),
             onShare: () => _showShareSheet(playlist),
             onOptions: () => _showOptionsMenu(playlist),
+            onAddSong: () => _navigateToAddSong(playlist),
+            onPlay: () => _playPlaylist(playlist.id),
           ),
         ),
       ),
@@ -162,6 +202,8 @@ class _Body extends StatelessWidget {
   final VoidCallback onBack;
   final VoidCallback onShare;
   final VoidCallback onOptions;
+  final VoidCallback onAddSong;
+  final VoidCallback onPlay;
 
   const _Body({
     required this.playlist,
@@ -169,37 +211,149 @@ class _Body extends StatelessWidget {
     required this.onBack,
     required this.onShare,
     required this.onOptions,
+    required this.onAddSong,
+    required this.onPlay,
   });
+
+  static const double _fabSize = 52.0;
+  static const double _fabOverhang = _fabSize / 2;
+  static const double _tabBarTopPadding = _fabOverhang + 10;
 
   @override
   Widget build(BuildContext context) {
     final canDelete =
         playlist.userRole == 'owner' || playlist.userRole == 'admin';
 
-    return Column(
-      children: [
-        // ── Gradient header ─────────────────────────────────
-        _GradientHeader(
-          playlist: playlist,
-          onBack: onBack,
-          onShare: onShare,
-          onOptions: onOptions,
-        ),
-        const SizedBox(height: 24),
-        // ── Tab bar pill ────────────────────────────────────
-        _PillTabBar(controller: tabController),
-
-        // ── Tab content ─────────────────────────────────────
-        Expanded(
-          child: TabBarView(
-            controller: tabController,
-            children: [
-              _SongsTab(playlist: playlist, canDelete: canDelete),
-              _ActivityTab(),
-            ],
+    return _BodyLayout(
+      fabSize: _fabSize,
+      tabBarTopPadding: _tabBarTopPadding,
+      onPlay: onPlay,
+      header: _GradientHeader(
+        playlist: playlist,
+        onBack: onBack,
+        onShare: onShare,
+        onOptions: onOptions,
+        bottomPadding: _tabBarTopPadding,
+      ),
+      tabBar: _PillTabBar(
+        controller: tabController,
+        topPadding: _tabBarTopPadding,
+      ),
+      tabContent: TabBarView(
+        controller: tabController,
+        children: [
+          _SongsTab(
+            playlist: playlist,
+            canDelete: canDelete,
+            onAddSong: onAddSong,
           ),
+          ActivityTab(playlistId: playlist.id),
+        ],
+      ),
+    );
+  }
+}
+
+// ─── BODY LAYOUT ───────────────────────────────────────────────
+
+class _BodyLayout extends StatefulWidget {
+  final double fabSize;
+  final double tabBarTopPadding;
+  final VoidCallback onPlay;
+  final Widget header;
+  final Widget tabBar;
+  final Widget tabContent;
+
+  const _BodyLayout({
+    required this.fabSize,
+    required this.tabBarTopPadding,
+    required this.onPlay,
+    required this.header,
+    required this.tabBar,
+    required this.tabContent,
+  });
+
+  @override
+  State<_BodyLayout> createState() => _BodyLayoutState();
+}
+
+class _BodyLayoutState extends State<_BodyLayout> {
+  final _headerKey = GlobalKey();
+  double _headerHeight = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _measureHeader());
+  }
+
+  void _measureHeader() {
+    final ctx = _headerKey.currentContext;
+    if (ctx == null) return;
+    final box = ctx.findRenderObject() as RenderBox?;
+    if (box == null) return;
+    final h = box.size.height;
+    if (h != _headerHeight) setState(() => _headerHeight = h);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final fabTop = _headerHeight > 0
+        ? _headerHeight - widget.fabSize / 2
+        : null;
+
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        Column(
+          children: [
+            KeyedSubtree(key: _headerKey, child: widget.header),
+            widget.tabBar,
+            Expanded(child: widget.tabContent),
+          ],
         ),
+        if (fabTop != null)
+          Positioned(
+            right: AppSpacing.md,
+            top: fabTop,
+            child: _PlayFab(size: widget.fabSize, onTap: widget.onPlay),
+          ),
       ],
+    );
+  }
+}
+
+// ─── PLAY FAB ──────────────────────────────────────────────────
+
+class _PlayFab extends StatelessWidget {
+  final double size;
+  final VoidCallback onTap;
+  const _PlayFab({required this.size, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: size,
+        height: size,
+        decoration: const BoxDecoration(
+          shape: BoxShape.circle,
+          color: Colors.white,
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black26,
+              blurRadius: 12,
+              offset: Offset(0, 4),
+            ),
+          ],
+        ),
+        child: const Icon(
+          Icons.play_arrow_rounded,
+          color: AppColors.primary,
+          size: 30,
+        ),
+      ),
     );
   }
 }
@@ -211,43 +365,43 @@ class _GradientHeader extends StatelessWidget {
   final VoidCallback onBack;
   final VoidCallback onShare;
   final VoidCallback onOptions;
+  final double bottomPadding;
 
   const _GradientHeader({
     required this.playlist,
     required this.onBack,
     required this.onShare,
     required this.onOptions,
+    required this.bottomPadding,
   });
 
   @override
   Widget build(BuildContext context) {
     final tt = Theme.of(context).textTheme;
+    final scaffoldBg = Theme.of(context).scaffoldBackgroundColor;
 
-    return Container(
-      clipBehavior: Clip.none,
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: playlist.coverGradient,
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-      ),
-      child: SafeArea(
-        bottom: false,
-        child: Stack(
-          clipBehavior: Clip.none,
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(
+    return Stack(
+      children: [
+        Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: playlist.coverGradient,
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+          ),
+          child: SafeArea(
+            bottom: false,
+            child: Padding(
+              padding: EdgeInsets.fromLTRB(
                 AppSpacing.md,
                 AppSpacing.sm,
                 AppSpacing.md,
-                AppSpacing.xl,
+                bottomPadding,
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Nav row
                   Row(
                     children: [
                       _CircleButton(
@@ -264,8 +418,6 @@ class _GradientHeader extends StatelessWidget {
                     ],
                   ),
                   const SizedBox(height: AppSpacing.xl),
-
-                  // Playlist name
                   Text(
                     playlist.name,
                     style: tt.displayLarge?.copyWith(
@@ -283,56 +435,28 @@ class _GradientHeader extends StatelessWidget {
                     overflow: TextOverflow.ellipsis,
                   ),
                   const SizedBox(height: AppSpacing.sm),
-
-                  // Members + song count
                   Row(
                     children: [
-                      // Overlapping member avatars
-                      SizedBox(
-                        width:
-                            28.0 +
-                            20.0 * (playlist.members.length - 1).clamp(0, 3),
-                        height: 28,
-                        child: Stack(
-                          children: playlist.members
-                              .take(3)
-                              .toList()
-                              .asMap()
-                              .entries
-                              .map((e) {
-                                return Positioned(
-                                  left: e.key * 20.0,
-                                  child: Container(
-                                    width: 28,
-                                    height: 28,
-                                    decoration: BoxDecoration(
-                                      shape: BoxShape.circle,
-                                      color: e.value.color,
-                                      border: Border.all(
-                                        color: Colors.white,
-                                        width: 2,
-                                      ),
-                                    ),
-                                    alignment: Alignment.center,
-                                    child: Text(
-                                      e.value.initial,
-                                      style: const TextStyle(
-                                        color: Colors.white,
-                                        fontSize: 10,
-                                        fontWeight: FontWeight.w700,
-                                      ),
-                                    ),
-                                  ),
-                                );
-                              })
-                              .toList(),
-                        ),
-                      ),
+                      _MemberAvatars(members: playlist.members),
                       const SizedBox(width: AppSpacing.sm),
-                      Text(
-                        '${playlist.songs.length} songs · ${playlist.totalDurationLabel}',
-                        style: tt.bodyMedium?.copyWith(
-                          color: Colors.white.withOpacity(0.9),
+                      RichText(
+                        text: TextSpan(
+                          children: [
+                            TextSpan(
+                              text: '${playlist.songs.length} songs',
+                              style: tt.bodyMedium?.copyWith(
+                                color: Colors.white.withOpacity(0.95),
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            TextSpan(
+                              text: ' · ${playlist.totalDurationLabel}',
+                              style: tt.bodyMedium?.copyWith(
+                                color: Colors.white.withOpacity(0.65),
+                                fontWeight: FontWeight.w400,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     ],
@@ -340,38 +464,98 @@ class _GradientHeader extends StatelessWidget {
                 ],
               ),
             ),
+          ),
+        ),
+        Positioned(
+          bottom: 0,
+          left: 0,
+          right: 0,
+          child: Container(
+            height: 48,
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [Colors.transparent, scaffoldBg.withOpacity(0.6)],
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
 
-            // Play FAB flotando en la esquina inferior derecha
-            Positioned(
-              right: AppSpacing.md,
-              bottom: -24,
+// ─── MEMBER AVATARS ────────────────────────────────────────────
+
+class _MemberAvatars extends StatelessWidget {
+  final List<dynamic> members;
+  const _MemberAvatars({required this.members});
+
+  @override
+  Widget build(BuildContext context) {
+    const maxVisible = 3;
+    final visibleMembers = members.take(maxVisible).toList();
+    final extra = members.length - maxVisible;
+    final totalItems = extra > 0 ? maxVisible + 1 : visibleMembers.length;
+
+    return SizedBox(
+      width: 28.0 + 20.0 * (totalItems - 1).clamp(0, maxVisible),
+      height: 28,
+      child: Stack(
+        children: [
+          ...visibleMembers.asMap().entries.map((e) {
+            return Positioned(
+              left: e.key * 20.0,
               child: Container(
-                width: 52,
-                height: 52,
-                decoration: const BoxDecoration(
+                width: 28,
+                height: 28,
+                decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: Colors.white,
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black26,
-                      blurRadius: 12,
-                      offset: Offset(0, 4),
-                    ),
-                  ],
+                  color: e.value.color,
+                  border: Border.all(color: Colors.white, width: 2),
                 ),
-                child: const Icon(
-                  Icons.play_arrow_rounded,
-                  color: AppColors.primary,
-                  size: 30,
+                alignment: Alignment.center,
+                child: Text(
+                  e.value.initial,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 10,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            );
+          }),
+          if (extra > 0)
+            Positioned(
+              left: maxVisible * 20.0,
+              child: Container(
+                width: 28,
+                height: 28,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Colors.black.withOpacity(0.4),
+                  border: Border.all(color: Colors.white, width: 2),
+                ),
+                alignment: Alignment.center,
+                child: Text(
+                  '+$extra',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 9,
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
               ),
             ),
-          ],
-        ),
+        ],
       ),
     );
   }
 }
+
+// ─── CIRCLE BUTTON ─────────────────────────────────────────────
 
 class _CircleButton extends StatelessWidget {
   final IconData icon;
@@ -399,7 +583,8 @@ class _CircleButton extends StatelessWidget {
 
 class _PillTabBar extends StatelessWidget {
   final TabController controller;
-  const _PillTabBar({required this.controller});
+  final double topPadding;
+  const _PillTabBar({required this.controller, required this.topPadding});
 
   @override
   Widget build(BuildContext context) {
@@ -408,9 +593,9 @@ class _PillTabBar extends StatelessWidget {
 
     return Container(
       color: isDark ? AppColors.backgroundDark : cs.surface,
-      padding: const EdgeInsets.fromLTRB(
+      padding: EdgeInsets.fromLTRB(
         AppSpacing.md,
-        AppSpacing.lg,
+        topPadding,
         AppSpacing.md,
         AppSpacing.sm,
       ),
@@ -452,112 +637,149 @@ class _PillTabBar extends StatelessWidget {
 class _SongsTab extends StatelessWidget {
   final PlaylistDetailModel playlist;
   final bool canDelete;
-  const _SongsTab({required this.playlist, required this.canDelete});
+  final VoidCallback onAddSong;
+
+  const _SongsTab({
+    required this.playlist,
+    required this.canDelete,
+    required this.onAddSong,
+  });
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final tt = Theme.of(context).textTheme;
 
-    return Stack(
+    return ListView(
+      padding: const EdgeInsets.only(top: AppSpacing.sm, bottom: AppSpacing.xl),
       children: [
-        ListView(
-          padding: const EdgeInsets.only(
-            top: AppSpacing.sm,
-            bottom: 80, // espacio para el botón Add a song,
+        _SyncBanner(),
+        if (playlist.songs.isEmpty)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(
+              AppSpacing.md,
+              AppSpacing.xl,
+              AppSpacing.md,
+              AppSpacing.md,
+            ),
+            child: Column(
+              children: [
+                Icon(
+                  Icons.queue_music_rounded,
+                  size: 48,
+                  color: cs.onSurface.withOpacity(0.2),
+                ),
+                const SizedBox(height: AppSpacing.sm),
+                Text(
+                  'No songs yet',
+                  style: tt.titleMedium?.copyWith(
+                    color: cs.onSurface.withOpacity(0.4),
+                  ),
+                ),
+                const SizedBox(height: AppSpacing.xs),
+                Text(
+                  'Add the first song to get started',
+                  style: tt.bodySmall?.copyWith(
+                    color: cs.onSurface.withOpacity(0.25),
+                  ),
+                ),
+              ],
+            ),
+          )
+        else
+          ...playlist.songs.map(
+            (song) => SongCard(
+              song: song,
+              canDelete: canDelete,
+              onDelete: () {
+                /* TODO */
+              },
+            ),
           ),
-          children: [
-            // Sync banner
-            _SyncBanner(),
-            if (playlist.songs.isEmpty)
-              Padding(
-                padding: const EdgeInsets.all(AppSpacing.xl),
-                child: Column(
-                  children: [
-                    Icon(
-                      Icons.queue_music_rounded,
-                      size: 48,
-                      color: cs.onSurface.withOpacity(0.2),
-                    ),
-                    const SizedBox(height: AppSpacing.sm),
-                    Text(
-                      'No songs yet',
-                      style: tt.titleMedium?.copyWith(
-                        color: cs.onSurface.withOpacity(0.4),
-                      ),
-                    ),
-                  ],
-                ),
-              )
-            else
-              ...playlist.songs.map(
-                (song) => SongCard(
-                  song: song,
-                  canDelete: canDelete,
-                  onDelete: () {
-                    /* TODO */
-                  },
-                ),
-              ),
-          ],
-        ),
+        if (playlist.songs.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(
+              AppSpacing.md,
+              AppSpacing.sm,
+              AppSpacing.md,
+              0,
+            ),
+            child: Divider(color: cs.onSurface.withOpacity(0.06), height: 1),
+          ),
+        _AddSongRow(onTap: onAddSong),
+      ],
+    );
+  }
+}
 
-        Positioned(
-          left: 0,
-          right: 0,
-          bottom: 0,
-          child: Container(
-            decoration: BoxDecoration(
-              color: Theme.of(context).scaffoldBackgroundColor,
-              border: Border(
-                top: BorderSide(color: cs.onSurface.withOpacity(0.08)),
+// ─── ADD SONG ROW ──────────────────────────────────────────────
+
+class _AddSongRow extends StatelessWidget {
+  final VoidCallback onTap;
+  const _AddSongRow({required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final tt = Theme.of(context).textTheme;
+
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(AppSpacing.radiusLg),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppSpacing.md,
+          vertical: AppSpacing.md,
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 52,
+              height: 52,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+                border: Border.all(
+                  color: AppColors.primary.withOpacity(0.35),
+                  width: 1.5,
+                ),
+                color: AppColors.primary.withOpacity(0.06),
+              ),
+              child: Icon(
+                Icons.add_rounded,
+                color: AppColors.primary.withOpacity(0.7),
+                size: 24,
               ),
             ),
-            padding: const EdgeInsets.symmetric(
-              horizontal: AppSpacing.md,
-              vertical: AppSpacing.sm,
-            ),
-            child: GestureDetector(
-              onTap: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => AddSongScreen(
-                      playlistId: playlist.id,
-                      playlistName: playlist.name,
+            const SizedBox(width: AppSpacing.md),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Add a song',
+                    style: tt.titleMedium?.copyWith(
+                      color: AppColors.primary,
+                      fontWeight: FontWeight.w600,
                     ),
                   ),
-                );
-              },
-              child: Container(
-                padding: const EdgeInsets.symmetric(vertical: AppSpacing.md),
-                decoration: BoxDecoration(
-                  color: cs.onSurface.withOpacity(0.06),
-                  borderRadius: BorderRadius.circular(AppSpacing.radiusLg),
-                  border: Border.all(color: cs.onSurface.withOpacity(0.1)),
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(
-                      Icons.add_rounded,
-                      color: cs.onSurface.withOpacity(0.5),
-                      size: 20,
+                  const SizedBox(height: 2),
+                  Text(
+                    'Search and add to this playlist',
+                    style: tt.bodySmall?.copyWith(
+                      color: cs.onSurface.withOpacity(0.4),
                     ),
-                    const SizedBox(width: AppSpacing.sm),
-                    Text(
-                      'Add a song',
-                      style: tt.titleMedium?.copyWith(
-                        color: cs.onSurface.withOpacity(0.5),
-                      ),
-                    ),
-                  ],
-                ),
+                  ),
+                ],
               ),
             ),
-          ),
+            Icon(
+              Icons.chevron_right_rounded,
+              color: cs.onSurface.withOpacity(0.25),
+              size: 20,
+            ),
+          ],
         ),
-      ],
+      ),
     );
   }
 }
@@ -579,9 +801,9 @@ class _SyncBanner extends StatelessWidget {
         vertical: AppSpacing.sm,
       ),
       decoration: BoxDecoration(
-        color: AppColors.synced.withOpacity(0.1),
+        color: AppColors.synced.withOpacity(0.15),
         borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
-        border: Border.all(color: AppColors.synced.withOpacity(0.3)),
+        border: Border.all(color: AppColors.synced.withOpacity(0.4)),
       ),
       child: Row(
         children: [
@@ -600,36 +822,6 @@ class _SyncBanner extends StatelessWidget {
           ),
           const Spacer(),
           Icon(Icons.sync_rounded, color: AppColors.synced, size: 18),
-        ],
-      ),
-    );
-  }
-}
-
-// ─── ACTIVITY TAB ──────────────────────────────────────────────
-
-class _ActivityTab extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    final tt = Theme.of(context).textTheme;
-
-    return Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(
-            Icons.history_rounded,
-            size: 48,
-            color: cs.onSurface.withOpacity(0.2),
-          ),
-          const SizedBox(height: AppSpacing.sm),
-          Text(
-            'Activity coming soon',
-            style: tt.bodyMedium?.copyWith(
-              color: cs.onSurface.withOpacity(0.4),
-            ),
-          ),
         ],
       ),
     );
@@ -660,7 +852,6 @@ class _OptionsSheet extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final tt = Theme.of(context).textTheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Container(

@@ -21,25 +21,15 @@ class SectionHeader extends StatelessWidget {
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(
-        AppSpacing.md, AppSpacing.lg, AppSpacing.md, AppSpacing.sm,
+        AppSpacing.md,
+        AppSpacing.lg,
+        AppSpacing.md,
+        AppSpacing.sm,
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(
-            title,
-            style: tt.titleLarge?.copyWith(color: cs.onSurface),
-          ),
-          GestureDetector(
-            onTap: onActionTap,
-            child: Text(
-              actionLabel,
-              style: tt.bodyMedium?.copyWith(
-                color: AppColors.primary,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ),
+          Text(title, style: tt.titleLarge?.copyWith(color: cs.onSurface)),
         ],
       ),
     );

@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:tunely/core/themes/app_colors.dart';
+import 'package:tunely/core/providers/auth_provider.dart';
 import 'package:tunely/features/home/create_playlist_screen.dart';
 import '../../core/constants/app_spacing.dart';
 import 'providers/playlists_provider.dart';
@@ -9,8 +11,6 @@ import 'providers/activity_provider.dart';
 import 'widgets/playlist_card.dart';
 import 'widgets/activity_item.dart';
 import 'widgets/section_header.dart';
-import 'package:go_router/go_router.dart';
-// ─── SCREEN ────────────────────────────────────────────────────
 
 class HomeScreen extends ConsumerWidget {
   const HomeScreen({super.key});
@@ -20,6 +20,9 @@ class HomeScreen extends ConsumerWidget {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final playlists = ref.watch(playlistsProvider);
     final activity = ref.watch(activityProvider);
+    final authState = ref.watch(authProvider);
+    final userName = authState.userName ?? 'there';
+    final greeting = _greeting();
 
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: isDark ? SystemUiOverlayStyle.light : SystemUiOverlayStyle.dark,
@@ -27,7 +30,6 @@ class HomeScreen extends ConsumerWidget {
         backgroundColor: Theme.of(context).scaffoldBackgroundColor,
         body: SafeArea(
           child: RefreshIndicator(
-            // Pull to refresh invalida ambos providers
             onRefresh: () async {
               ref.invalidate(playlistsProvider);
               ref.invalidate(activityProvider);
@@ -38,21 +40,9 @@ class HomeScreen extends ConsumerWidget {
                 // ── App Bar ─────────────────────────────────────
                 SliverToBoxAdapter(
                   child: _HomeAppBar(
-                    onAddTap: () {
-                      showModalBottomSheet(
-                        context: context,
-                        isScrollControlled: true,
-                        backgroundColor: Colors.transparent,
-                        builder: (_) => DraggableScrollableSheet(
-                          initialChildSize: 0.92,
-                          maxChildSize: 0.92,
-                          minChildSize: 0.5,
-                          builder: (_, controller) => CreatePlaylistScreen(
-                            onCreated: () => Navigator.of(context).pop(),
-                          ),
-                        ),
-                      );
-                    },
+                    greeting: greeting,
+                    userName: userName,
+                    onAddTap: () => _showCreatePlaylist(context),
                   ),
                 ),
 
@@ -61,13 +51,10 @@ class HomeScreen extends ConsumerWidget {
                   child: SectionHeader(
                     title: 'Shared Playlists',
                     actionLabel: 'See All',
-                    onActionTap: () {
-                      // TODO: navegar a todas las playlists
-                    },
+                    onActionTap: () {},
                   ),
                 ),
 
-                // Estado de playlists: loading / error / data
                 playlists.when(
                   loading: () =>
                       const SliverToBoxAdapter(child: _PlaylistsShimmer()),
@@ -79,19 +66,24 @@ class HomeScreen extends ConsumerWidget {
                   ),
                   data: (list) => list.isEmpty
                       ? const SliverToBoxAdapter(child: _EmptyPlaylists())
-                      : SliverList(
-                          delegate: SliverChildBuilderDelegate(
-                            (context, i) => Padding(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: AppSpacing.md,
-                              ).copyWith(bottom: AppSpacing.sm),
-                              child: PlaylistCard(
-                                playlist: list[i],
-                                onTap: () =>
-                                    context.push('/playlist/${list[i].id}'),
+                      : SliverPadding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: AppSpacing.md,
+                          ),
+                          sliver: SliverList(
+                            delegate: SliverChildBuilderDelegate(
+                              (context, i) => Padding(
+                                padding: const EdgeInsets.only(
+                                  bottom: AppSpacing.sm,
+                                ),
+                                child: PlaylistCard(
+                                  playlist: list[i],
+                                  onTap: () =>
+                                      context.push('/playlist/${list[i].id}'),
+                                ),
                               ),
+                              childCount: list.length,
                             ),
-                            childCount: list.length,
                           ),
                         ),
                 ),
@@ -101,13 +93,10 @@ class HomeScreen extends ConsumerWidget {
                   child: SectionHeader(
                     title: 'Recent Activity',
                     actionLabel: 'View All',
-                    onActionTap: () {
-                      // TODO: navegar a actividad completa
-                    },
+                    onActionTap: () {},
                   ),
                 ),
 
-                // Estado de activity: loading / error / data
                 activity.when(
                   loading: () =>
                       const SliverToBoxAdapter(child: _ActivityShimmer()),
@@ -119,15 +108,27 @@ class HomeScreen extends ConsumerWidget {
                   ),
                   data: (list) => list.isEmpty
                       ? const SliverToBoxAdapter(child: _EmptyActivity())
-                      : SliverList(
-                          delegate: SliverChildBuilderDelegate(
-                            (context, i) => Padding(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: AppSpacing.md,
-                              ).copyWith(bottom: AppSpacing.sm),
-                              child: ActivityItem(activity: list[i]),
+                      : SliverPadding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: AppSpacing.md,
+                          ),
+                          sliver: SliverList(
+                            delegate: SliverChildBuilderDelegate(
+                              (context, i) => Padding(
+                                padding: const EdgeInsets.only(
+                                  bottom: AppSpacing.sm,
+                                ),
+                                child: ActivityItem(
+                                  activity: list[i],
+                                  onTap: list[i].playlistId != null
+                                      ? () => context.push(
+                                          '/playlist/${list[i].playlistId}',
+                                        )
+                                      : null,
+                                ),
+                              ),
+                              childCount: list.length,
                             ),
-                            childCount: list.length,
                           ),
                         ),
                 ),
@@ -142,13 +143,42 @@ class HomeScreen extends ConsumerWidget {
       ),
     );
   }
+
+  String _greeting() {
+    final hour = DateTime.now().hour;
+    if (hour < 12) return 'Good morning';
+    if (hour < 18) return 'Good afternoon';
+    return 'Good evening';
+  }
+
+  void _showCreatePlaylist(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => DraggableScrollableSheet(
+        initialChildSize: 0.92,
+        maxChildSize: 0.92,
+        minChildSize: 0.5,
+        builder: (_, __) =>
+            CreatePlaylistScreen(onCreated: () => Navigator.of(context).pop()),
+      ),
+    );
+  }
 }
 
 // ─── APP BAR ───────────────────────────────────────────────────
 
 class _HomeAppBar extends StatelessWidget {
+  final String greeting;
+  final String userName;
   final VoidCallback onAddTap;
-  const _HomeAppBar({required this.onAddTap});
+
+  const _HomeAppBar({
+    required this.greeting,
+    required this.userName,
+    required this.onAddTap,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -160,27 +190,33 @@ class _HomeAppBar extends StatelessWidget {
         AppSpacing.md,
         AppSpacing.lg,
         AppSpacing.md,
-        AppSpacing.sm,
+        AppSpacing.md,
       ),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Tunely',
-                  style: tt.displayLarge?.copyWith(color: cs.onSurface),
-                ),
-                Text(
-                  'Music together',
+                  '$greeting,',
                   style: tt.bodyMedium?.copyWith(
                     color: cs.onSurface.withOpacity(0.5),
+                  ),
+                ),
+                Text(
+                  userName,
+                  style: tt.displayLarge?.copyWith(
+                    color: cs.onSurface,
+                    fontSize: 28,
+                    fontWeight: FontWeight.w800,
                   ),
                 ),
               ],
             ),
           ),
+          // Botón crear playlist
           GestureDetector(
             onTap: onAddTap,
             child: Container(
@@ -188,9 +224,13 @@ class _HomeAppBar extends StatelessWidget {
               height: 48,
               decoration: const BoxDecoration(
                 shape: BoxShape.circle,
-                color: AppColors.primary,
+                gradient: AppColors.brandGradient,
               ),
-              child: const Icon(Icons.add, color: Colors.white, size: 28),
+              child: const Icon(
+                Icons.add_rounded,
+                color: Colors.white,
+                size: 26,
+              ),
             ),
           ),
         ],
@@ -199,22 +239,22 @@ class _HomeAppBar extends StatelessWidget {
   }
 }
 
-// ─── LOADING SHIMMER ───────────────────────────────────────────
+// ─── SHIMMER ───────────────────────────────────────────────────
 
 class _PlaylistsShimmer extends StatelessWidget {
   const _PlaylistsShimmer();
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      children: List.generate(
-        3,
-        (_) => Padding(
-          padding: const EdgeInsets.symmetric(
-            horizontal: AppSpacing.md,
-            vertical: AppSpacing.xs,
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
+      child: Column(
+        children: List.generate(
+          2,
+          (_) => Padding(
+            padding: const EdgeInsets.only(bottom: AppSpacing.sm),
+            child: _ShimmerBox(height: 80, radius: AppSpacing.radiusLg),
           ),
-          child: _ShimmerBox(height: 88, radius: AppSpacing.radiusLg),
         ),
       ),
     );
@@ -226,15 +266,15 @@ class _ActivityShimmer extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      children: List.generate(
-        2,
-        (_) => Padding(
-          padding: const EdgeInsets.symmetric(
-            horizontal: AppSpacing.md,
-            vertical: AppSpacing.xs,
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
+      child: Column(
+        children: List.generate(
+          3,
+          (_) => Padding(
+            padding: const EdgeInsets.only(bottom: AppSpacing.sm),
+            child: _ShimmerBox(height: 64, radius: AppSpacing.radiusLg),
           ),
-          child: _ShimmerBox(height: 64, radius: AppSpacing.radiusLg),
         ),
       ),
     );
@@ -251,6 +291,7 @@ class _ShimmerBox extends StatelessWidget {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       height: height,
+      width: double.infinity,
       decoration: BoxDecoration(
         color: isDark
             ? Colors.white.withOpacity(0.06)
@@ -274,7 +315,10 @@ class _ErrorRetry extends StatelessWidget {
     final tt = Theme.of(context).textTheme;
 
     return Padding(
-      padding: const EdgeInsets.all(AppSpacing.xl),
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.md,
+        vertical: AppSpacing.xl,
+      ),
       child: Column(
         children: [
           Icon(
@@ -303,7 +347,7 @@ class _ErrorRetry extends StatelessWidget {
   }
 }
 
-// ─── EMPTY STATES ──────────────────────────────────────────────
+// ─── EMPTY PLAYLISTS ───────────────────────────────────────────
 
 class _EmptyPlaylists extends StatelessWidget {
   const _EmptyPlaylists();
@@ -312,33 +356,66 @@ class _EmptyPlaylists extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final tt = Theme.of(context).textTheme;
+
     return Padding(
-      padding: const EdgeInsets.all(AppSpacing.xl),
-      child: Column(
-        children: [
-          Icon(
-            Icons.queue_music_rounded,
-            size: 48,
-            color: cs.onSurface.withOpacity(0.2),
-          ),
-          const SizedBox(height: AppSpacing.sm),
-          Text(
-            'No playlists yet',
-            style: tt.titleMedium?.copyWith(
-              color: cs.onSurface.withOpacity(0.4),
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.md,
+        vertical: AppSpacing.lg,
+      ),
+      child: Container(
+        padding: const EdgeInsets.all(AppSpacing.xl),
+        decoration: BoxDecoration(
+          color: AppColors.primary.withOpacity(0.05),
+          borderRadius: BorderRadius.circular(AppSpacing.radiusLg),
+          border: Border.all(color: AppColors.primary.withOpacity(0.15)),
+        ),
+        child: Column(
+          children: [
+            Container(
+              width: 64,
+              height: 64,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: AppColors.primary.withOpacity(0.1),
+              ),
+              child: const Icon(
+                Icons.queue_music_rounded,
+                size: 32,
+                color: AppColors.primary,
+              ),
             ),
-          ),
-          const SizedBox(height: AppSpacing.xs),
-          Text(
-            'Tap + to create your first shared playlist',
-            textAlign: TextAlign.center,
-            style: tt.bodySmall?.copyWith(color: cs.onSurface.withOpacity(0.3)),
-          ),
-        ],
+            const SizedBox(height: AppSpacing.md),
+            Text(
+              'No playlists yet',
+              style: tt.titleMedium?.copyWith(
+                color: cs.onSurface,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: AppSpacing.xs),
+            Text(
+              'Create your first shared playlist\nand invite friends to collaborate',
+              textAlign: TextAlign.center,
+              style: tt.bodySmall?.copyWith(
+                color: cs.onSurface.withOpacity(0.4),
+                height: 1.5,
+              ),
+            ),
+            const SizedBox(height: AppSpacing.lg),
+            TextButton.icon(
+              onPressed: () {},
+              icon: const Icon(Icons.add_rounded, size: 18),
+              label: const Text('Create playlist'),
+              style: TextButton.styleFrom(foregroundColor: AppColors.primary),
+            ),
+          ],
+        ),
       ),
     );
   }
 }
+
+// ─── EMPTY ACTIVITY ────────────────────────────────────────────
 
 class _EmptyActivity extends StatelessWidget {
   const _EmptyActivity();
@@ -347,15 +424,33 @@ class _EmptyActivity extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final tt = Theme.of(context).textTheme;
+
     return Padding(
       padding: const EdgeInsets.symmetric(
         horizontal: AppSpacing.md,
-        vertical: AppSpacing.lg,
+        vertical: AppSpacing.md,
       ),
-      child: Text(
-        'No activity yet — invite someone to collaborate!',
-        textAlign: TextAlign.center,
-        style: tt.bodySmall?.copyWith(color: cs.onSurface.withOpacity(0.3)),
+      child: Row(
+        children: [
+          Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: cs.onSurface.withOpacity(0.06),
+            ),
+            child: Icon(
+              Icons.history_rounded,
+              size: 20,
+              color: cs.onSurface.withOpacity(0.25),
+            ),
+          ),
+          const SizedBox(width: AppSpacing.md),
+          Text(
+            'No activity yet — invite someone to collaborate!',
+            style: tt.bodySmall?.copyWith(color: cs.onSurface.withOpacity(0.4)),
+          ),
+        ],
       ),
     );
   }

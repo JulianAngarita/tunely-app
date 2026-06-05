@@ -5,12 +5,15 @@ import 'package:go_router/go_router.dart';
 import 'package:app_links/app_links.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:tunely/core/providers/auth_provider.dart';
+import 'package:tunely/features/activity/activity_screen.dart';
+import 'package:tunely/features/add/add_screen.dart';
 import 'package:tunely/features/auth/login_screen.dart';
 import 'package:tunely/features/home/home_screen.dart';
 import 'package:tunely/features/home/widgets/main_shell.dart';
 import 'package:tunely/features/onboarding/onboarding_screen.dart';
 import 'package:tunely/features/playlist_detail/playlist_detail_screen.dart';
 import 'package:tunely/features/profile/profile_screen.dart';
+import 'package:tunely/features/profile/providers/profile_provider.dart';
 
 // ─── AUTH STATE (simple, sin provider por ahora) ───────────────
 
@@ -71,6 +74,13 @@ class DeepLinkService {
             .then((_) {
               router.go('/home');
             });
+        ref
+            .read(authProvider.notifier)
+            .saveTokens(accessToken, refreshToken)
+            .then((_) {
+              ref.invalidate(connectedAccountsProvider);
+              router.go('/home');
+            });
       }
     }
   }
@@ -122,14 +132,14 @@ GoRouter buildRouter(SharedPreferences prefs) {
           ),
           StatefulShellBranch(
             routes: [
-              GoRoute(path: '/add', builder: (_, __) => const Placeholder()),
+              GoRoute(path: '/add', builder: (_, __) => const AddScreen()),
             ],
           ),
           StatefulShellBranch(
             routes: [
               GoRoute(
                 path: '/activity',
-                builder: (_, __) => const Placeholder(),
+                builder: (_, __) => const ActivityScreen(),
               ),
             ],
           ),

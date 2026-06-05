@@ -70,14 +70,25 @@ class PlaylistModel {
         ? DateTime.tryParse(json['updated_at'] as String)
         : null;
 
-    final songs = (json['playlist_songs'] as List<dynamic>?) ?? [];
+    final playlistSongs = json['playlist_songs'];
+    int trackCount = 0;
+
+    if (playlistSongs is List) {
+      if (playlistSongs.isNotEmpty && playlistSongs[0] is Map) {
+        // Supabase count: [{count: 5}]
+        trackCount = (playlistSongs[0]['count'] as int?) ?? 0;
+      } else {
+        // Lista de canciones directa
+        trackCount = playlistSongs.length;
+      }
+    }
 
     return PlaylistModel(
       id: id,
       name: (json['name'] as String?) ?? 'Untitled',
 
       description: (json['description'] as String?),
-      trackCount: songs.length,
+      trackCount: trackCount,
       coverGradient: gradients[gradientIndex],
       memberInitials: memberInitials,
       memberColors: memberColors,

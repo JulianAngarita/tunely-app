@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:tunely/core/router/app_router_with_deeplink.dart';
 import 'package:tunely/features/add_song/models/add_song_result_model.dart';
+import 'package:tunely/features/playlist_detail/providers/playlist_detail_provider.dart';
 import '../../../core/network/api_client.dart';
 import '../models/search_result_model.dart';
 import 'search_provider.dart';
@@ -38,6 +39,7 @@ class AddSongNotifier extends StateNotifier<AsyncValue<void>> {
       final result = AddSongResult.fromJson(data);
 
       _ref.read(searchProvider.notifier).markAsAdded(song.id);
+      _ref.invalidate(playlistDetailProvider(_playlistId));
       state = const AsyncValue.data(null);
       return result;
     } catch (e, st) {
@@ -68,6 +70,7 @@ class AddSongNotifier extends StateNotifier<AsyncValue<void>> {
           },
         },
       );
+      _ref.invalidate(playlistDetailProvider(_playlistId));
     } catch (e) {
       rethrow;
     }

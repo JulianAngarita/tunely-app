@@ -14,6 +14,8 @@ class UserProfile {
   final int playlistCount;
   final int songsAdded;
   final int collaborators;
+  final String? preferredPlatform; // ← nuevo
+  String get initial => name.isNotEmpty ? name[0].toUpperCase() : '?';
 
   const UserProfile({
     required this.id,
@@ -23,9 +25,8 @@ class UserProfile {
     this.playlistCount = 0,
     this.songsAdded = 0,
     this.collaborators = 0,
+    this.preferredPlatform,
   });
-
-  String get initial => name.isNotEmpty ? name[0].toUpperCase() : '?';
 
   factory UserProfile.fromJson(Map<String, dynamic> json) {
     return UserProfile(
@@ -33,6 +34,10 @@ class UserProfile {
       name: (json['name'] as String?) ?? 'You',
       email: (json['email'] as String?) ?? '',
       avatarUrl: json['avatar_url'] as String?,
+      playlistCount: (json['playlistCount'] as int?) ?? 0,
+      songsAdded: (json['songsAdded'] as int?) ?? 0,
+      collaborators: (json['collaborators'] as int?) ?? 0,
+      preferredPlatform: json['preferredPlatform'] as String?, // ← nuevo,
     );
   }
 }
@@ -59,7 +64,7 @@ class ConnectedAccount {
 
 // ─── PROVIDERS ─────────────────────────────────────────────────
 
-final profileProvider = FutureProvider<UserProfile>((ref) async {
+final profileProvider = FutureProvider.autoDispose<UserProfile>((ref) async {
   final router = ref.watch(routerProvider);
   final client = ref.watch(apiClientProvider(router));
 
@@ -70,20 +75,32 @@ final profileProvider = FutureProvider<UserProfile>((ref) async {
   return UserProfile.fromJson(data['user'] as Map<String, dynamic>);
 });
 
-final connectedAccountsProvider = FutureProvider<List<ConnectedAccount>>((
+final connectedAccountsProvider =
+    FutureProvider.autoDispose<List<ConnectedAccount>>((ref) async {
+      final router = ref.watch(routerProvider);
+      final client = ref.watch(apiClientProvider(router));
+
+      final response = await client.get('/users/me/accounts');
+      final body = response.data as Map<String, dynamic>;
+      final data = body['data'] as Map<String, dynamic>;
+      final list = data['accounts'] as List<dynamic>? ?? [];
+
+      return list
+          .map((e) => ConnectedAccount.fromJson(e as Map<String, dynamic>))
+          .toList();
+    });
+
+final updatePreferredPlatformProvider = FutureProvider.family<void, String>((
   ref,
+  platform,
 ) async {
   final router = ref.watch(routerProvider);
   final client = ref.watch(apiClientProvider(router));
 
-  final response = await client.get('/users/me/accounts');
-  final body = response.data as Map<String, dynamic>;
-  final data = body['data'] as Map<String, dynamic>;
-  final list = data['accounts'] as List<dynamic>? ?? [];
-
-  return list
-      .map((e) => ConnectedAccount.fromJson(e as Map<String, dynamic>))
-      .toList();
+  await client.patch(
+    '/users/me/preferred-platform',
+    data: {'platform': platform},
+  );
 });
 
 // ─── THEME MODE PROVIDER ───────────────────────────────────────
